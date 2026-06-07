@@ -179,7 +179,7 @@ def process_deck(deck, tag, lang, dry_run):
         note_id = note["noteId"]
 
         try:
-            word = note["fields"]["Front"]["value"].strip()
+            word = note["fields"]["Front"]["value"].strip().lower()
             back = note["fields"]["Back"]["value"]
 
             if not word:
@@ -206,7 +206,11 @@ def process_deck(deck, tag, lang, dry_run):
 
             if dry_run:
                 print("  DRY RUN")
+                print(f"  POS: {data.get('pos')}")
                 print(f"  → {data['definition']}")
+
+                if data.get("example"):
+                    print(f"  EX: {data['example']}")
             else:
                 update_note(note_id, {"Back": new_back})
                 add_tags([note_id], tag)
