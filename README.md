@@ -1,22 +1,29 @@
-# Anki Auto Dictionary Augmenter
+# Anki Auto Vocabulary Augmenter (WiktAPI-based)
 
-This script enriches Anki vocabulary cards by fetching definitions and examples from Wiktionary and appending them to the back of existing notes. It supports both English and Spanish decks via AnkiConnect.
+This script enriches Anki vocabulary cards by fetching definitions and example sentences from the WiktAPI service and appending them to existing notes.
+
+It supports separate English and Spanish decks and uses AnkiConnect for safe, local automation.
 
 ---
 
 ## Features
 
-* Uses AnkiConnect (no direct database access)
-* Fetches definitions from Wiktionary
-* Adds:
+* Uses AnkiConnect (no direct Anki database access)
+* Uses WiktAPI (structured Wiktionary data)
+* Supports:
 
-  * English definitions + optional example sentences (English deck)
-  * English gloss + part of speech + optional example (Spanish deck)
-* Appends formatted HTML to existing card back fields
-* Tags processed cards to prevent duplicate processing
-* Rate-limited requests (1s delay between lookups)
-* Dry-run mode for safe testing
-* Failure tagging for missing or problematic entries
+  * English Vocabulary deck
+  * Spanish Vocabulary deck
+* Appends content to existing Back field (never overwrites)
+* Extracts:
+
+  * First definition (gloss)
+  * First example sentence (if available)
+  * Part of speech (for Spanish + metadata)
+* Tags processed notes to prevent duplicate enrichment
+* Dry-run mode for safe inspection
+* Rate limiting (1 second between requests)
+* Automatic normalization (lowercasing input words)
 
 ---
 
@@ -24,7 +31,7 @@ This script enriches Anki vocabulary cards by fetching definitions and examples 
 
 ### 1. Anki + AnkiConnect
 
-Install the AnkiConnect add-on in Anki:
+Install AnkiConnect add-on:
 
 https://ankiweb.net/shared/info/2055492159
 
@@ -40,33 +47,43 @@ http://localhost:8765
 
 ### 2. Python dependencies
 
-Install required packages:
-
 ```bash
-pip install requests wiktionaryparser
+pip install requests
 ```
+
+(No additional parsing libraries required anymore.)
 
 ---
 
-## Deck Setup
+## Deck Configuration
 
 The script expects two decks:
 
 * `English Vocabulary`
 * `Spanish Vocabulary`
 
-Each note type must include:
+Each note must contain:
 
-* `Front` (word)
-* `Back` (existing content to be appended)
+* `Front` → vocabulary word
+* `Back` → existing content to be appended
 
 ---
 
 ## Tags Used
 
-* `auto-defined-en` → English deck processed notes
-* `auto-defined-es` → Spanish deck processed notes
-* `auto-define-failed` → lookup failures or parsing errors
+### Success tags
+
+* `auto-defined-en`
+* `auto-defined-es`
+
+### Failure tag
+
+* `auto-define-failed`
+
+Used when:
+
+* no definition is found
+* API errors occur
 
 ---
 
@@ -78,7 +95,17 @@ Each note type must include:
 python anki_define.py --dry-run
 ```
 
-Shows what would be updated without modifying Anki.
+Shows what would be added without modifying Anki.
+
+Example output:
+
+```
+Processing: insouciant
+  DRY RUN
+  POS: adjective
+  → casually unconcerned
+  EX: an insouciant gesture
+```
 
 ---
 
@@ -88,73 +115,148 @@ Shows what would be updated without modifying Anki.
 python anki_define.py
 ```
 
-Processes both decks automatically.
+Updates Anki notes and appends enriched content.
 
 ---
 
 ## Behavior
 
-### English cards
+### Word normalization
 
-Appends:
+All words are normalized before lookup:
 
-* First Wiktionary definition
-* Optional example sentence
+* stripped of whitespace
+* converted to lowercase
 
-### Spanish cards
+Example:
 
-Appends:
+```
+"Insouciant" → "insouciant"
+```
 
-* English gloss (first available meaning)
-* Part of speech (if available)
-* Optional Spanish example sentence
+---
+
+### English deck behavior
+
+For each word:
+
+* Fetches WiktAPI English definition
+* Selects:
+
+  * first sense
+  * first gloss (definition)
+  * first example (if available)
+* Appends formatted HTML to Back field
+
+---
+
+### Spanish deck behavior
+
+For each word:
+
+* Fetches WiktAPI Spanish entry
+* Extracts:
+
+  * English gloss
+  * part of speech
+  * example sentence (if available)
+* Appends formatted HTML to Back field
 
 ---
 
 ## Rate limiting
 
-* 1 second delay between Wiktionary requests
-* Prevents excessive requests and improves stability
+To avoid excessive API usage:
+
+* 1 second delay between requests
+
+---
+
+## Output format (Anki Back field)
+
+Each note gets appended HTML like:
+
+### English example:
+
+* Definition
+* Example sentence
+* Source label (WiktAPI)
+
+### Spanish example:
+
+* English gloss
+* Part of speech
+* Example sentence
+
+---
+
+## Dry-run mode
+
+Dry-run prints:
+
+* word being processed
+* part of speech
+* selected definition
+* example sentence (if present)
+
+No changes are made to Anki.
 
 ---
 
 ## Failure handling
 
-If a word cannot be resolved via Wiktionary:
+If lookup fails:
 
-* The note is tagged with:
-
-  ```
-  auto-define-failed
-  ```
-* Processing continues for remaining notes
+* note is tagged with `auto-define-failed`
+* processing continues for remaining notes
 
 ---
 
-## Notes
+## Design Notes
 
-* Existing content in the `Back` field is preserved and appended to
-* Only notes not already tagged are processed
-* Wiktionary structure varies; some entries may lack examples or clean definitions
-* Spanish gloss extraction depends on Wiktionary formatting and may require tuning
+### Why WiktAPI
+
+This tool replaces:
+
+* Wiktionary scraping
+* wiktionaryparser (deprecated/fragile)
+* raw MediaWiki parsing
+
+WiktAPI provides:
+
+* structured JSON
+* clean separation of senses
+* glosses and examples
+* stable API surface
 
 ---
 
-## Safety / Recommendations
+## Limitations
 
-* Always run `--dry-run` first
-* Test on a small subset of cards before bulk processing
-* Review failed-tagged notes periodically
+* Only first sense is used (no sense ranking)
+* Only first example is used
+* Some entries may lack examples entirely
+* Spanish coverage depends on Wiktionary data completeness
 
 ---
 
 ## Future improvements
 
-Possible extensions:
+Possible enhancements:
 
-* Better Spanish semantic extraction
-* Support for multiple definitions per card
-* OpenAI fallback for missing examples
-* GUI or CLI progress UI
-* Caching to reduce repeated lookups
+* Sense ranking (frequency-aware selection)
+* Multiple examples per card
+* Local caching layer
+* Pronunciation (IPA) support
+* Better Spanish → English disambiguation
+* CLI progress bar
+* Deduplication of repeated runs
+
+---
+
+## Safety notes
+
+* Always run `--dry-run` first
+* Test on a small subset of notes before full deck runs
+* WiktAPI is a third-party service; availability may change
 
