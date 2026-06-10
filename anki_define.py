@@ -75,6 +75,39 @@ def update_note(note_id, fields):
 def add_tags(note_ids, tag):
     return anki("addTags", notes=note_ids, tags=tag)
 
+def choose_sense(word, senses):
+    if len(senses) == 1:
+        return senses[0]
+
+    print()
+    print("=" * 60)
+    print(f"Word: {word}")
+    print()
+
+    for idx, sense in enumerate(senses, start=1):
+        print(f"{idx}. {sense['definition']}")
+
+        if sense.get("example"):
+            print()
+            print(f"   Example: {sense['example']}")
+
+        print()
+
+    while True:
+        choice = input(
+            f"Select definition [1-{len(senses)}]: "
+        ).strip()
+
+        try:
+            selected = int(choice)
+
+            if 1 <= selected <= len(senses):
+                return senses[selected - 1]
+
+        except ValueError:
+            pass
+
+        print("Invalid choice.")
 
 # -------------------------
 # WiktAPI lookup
@@ -83,7 +116,12 @@ def add_tags(note_ids, tag):
 def lookup_word(word, lang):
     url = f"https://api.wiktapi.dev/v1/{lang}/word/{word}/definitions"
 
-    r = requests.get(url, timeout=30)
+    r = requests.get(
+        url,
+        params={"lang": lang},
+        timeout=30,
+    )
+
     r.raise_for_status()
 
     data = r.json()
@@ -92,24 +130,46 @@ def lookup_word(word, lang):
     if not definitions:
         return None
 
-    first_def = definitions[0]
-    senses = first_def.get("senses", [])
+    senses_out = []
+    seen_definitions = set()
 
-    if not senses:
+    for definition in definitions:
+        pos = definition.get("pos")
+
+        for sense in definition.get("senses", []):
+            glosses = sense.get("glosses", [])
+            if not glosses:
+                continue
+
+            gloss = glosses[0].strip()
+
+            # Deduplicate identical definitions
+            if gloss.lower() in seen_definitions:
+                continue
+
+            seen_definitions.add(gloss.lower())
+
+            example = None
+
+            examples = sense.get("examples", [])
+            if examples:
+                first_example = examples[0]
+
+                if isinstance(first_example, dict):
+                    example = first_example.get("text")
+                else:
+                    example = str(first_example)
+
+            senses_out.append({
+                "pos": pos,
+                "definition": gloss,
+                "example": example,
+            })
+
+    if not senses_out:
         return None
 
-    sense = senses[0]
-
-    glosses = sense.get("glosses", [])
-    if not glosses:
-        return None
-
-    return {
-        "pos": first_def.get("pos"),
-        "definition": glosses[0],
-        "example": _extract_example(sense),
-    }
-
+    return senses_out
 
 def _extract_example(sense):
     examples = sense.get("examples", [])
@@ -126,13 +186,23 @@ def _extract_example(sense):
 
 
 # -------------------------
-# HTML builders
+# HTML builder
 # -------------------------
 
-def build_en_html(data):
+def build_html(data):
     parts = [
         "<hr>",
         '<div class="auto-definition">',
+    ]
+
+    if data.get("pos"):
+        parts += [
+            "<b>Part of speech</b><br>",
+            html.escape(data["pos"]),
+            "<br><br>",
+        ]
+
+    parts += [
         "<b>Definition</b><br>",
         html.escape(data["definition"]),
     ]
@@ -151,38 +221,6 @@ def build_en_html(data):
     ]
 
     return "".join(parts)
-
-
-def build_es_html(data):
-    parts = [
-        "<hr>",
-        '<div class="auto-definition">',
-        "<b>English gloss</b><br>",
-        html.escape(data["definition"]),
-    ]
-
-    if data.get("pos"):
-        parts += [
-            "<br><br>",
-            "<b>Part of speech</b><br>",
-            html.escape(data["pos"]),
-        ]
-
-    if data.get("example"):
-        parts += [
-            "<br><br>",
-            "<b>Example</b><br>",
-            html.escape(data["example"]),
-        ]
-
-    parts += [
-        "<br><br>",
-        "<small>Source: WiktAPI</small>",
-        "</div>",
-    ]
-
-    return "".join(parts)
-
 
 # -------------------------
 # Processing
@@ -208,9 +246,9 @@ def process_deck(deck, tag, lang, dry_run):
 
             print(f"Processing: {word}")
 
-            data = lookup_word(word, lang)
+            senses = lookup_word(word, lang)
 
-            if not data:
+            if not senses:
                 print("  No definition found")
 
                 if not dry_run:
@@ -218,17 +256,17 @@ def process_deck(deck, tag, lang, dry_run):
 
                 continue
 
-            if lang == "en":
-                addition = build_en_html(data)
-            else:
-                addition = build_es_html(data)
-
+            data = choose_sense(word, senses)
+            addition = build_html(data)
             new_back = back + addition
 
             if dry_run:
                 print("  DRY RUN")
-                print(f"  POS: {data.get('pos')}")
-                print(f"  → {data['definition']}")
+
+                if data.get("pos"):
+                    print(f"  POS: {data['pos']}")
+
+                print(f"  DEF: {data['definition']}")
 
                 if data.get("example"):
                     print(f"  EX: {data['example']}")
