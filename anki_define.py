@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import sys
 import argparse
 import html
 import time
@@ -22,19 +23,39 @@ RATE_LIMIT_SECONDS = 1
 # -------------------------
 
 def anki(action, **params):
-    r = requests.post(
-        ANKI_CONNECT_URL,
-        json={"action": action, "version": 6, "params": params},
-        timeout=30,
-    )
-    r.raise_for_status()
+    try:
+        r = requests.post(
+            ANKI_CONNECT_URL,
+            json={"action": action, "version": 6, "params": params},
+            timeout=5,
+        )
+
+        r.raise_for_status()
+
+    except requests.exceptions.ConnectionError:
+        print(
+            "\nERROR: Cannot connect to AnkiConnect.\n"
+            "\n"
+            "Make sure:\n"
+            "  1. Anki is running\n"
+            "  2. The AnkiConnect add-on is installed\n"
+            "  3. AnkiConnect is listening on http://localhost:8765\n"
+        )
+        sys.exit(1)
+
+    except requests.exceptions.Timeout:
+        print(
+            "\nERROR: Timed out waiting for AnkiConnect.\n"
+            "Is Anki currently starting up or frozen?\n"
+        )
+        sys.exit(1)
+
     data = r.json()
 
     if data.get("error"):
         raise RuntimeError(data["error"])
 
     return data["result"]
-
 
 def find_notes(query):
     return anki("findNotes", query=query)
