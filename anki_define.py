@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
+import re
 import sys
 import argparse
 import html
 import time
 import requests
+import unicodedata
 
 ANKI_CONNECT_URL = "http://localhost:8765"
 
@@ -109,80 +111,85 @@ def choose_sense(word, senses):
 
         print("Invalid choice.")
 
+
 # -------------------------
-# WiktAPI lookup
+# Parser for Ollama responses
 # -------------------------
 
-def lookup_word(word, lang):
-    url = f"https://api.wiktapi.dev/v1/{lang}/word/{word}/definitions"
+def parse_senses(text):
+    senses = []
 
-    r = requests.get(
-        url,
-        params={"lang": lang},
-        timeout=30,
+    blocks = re.split(r"\n\s*\d+\.\s", "\n" + text)
+    blocks = [b.strip() for b in blocks if b.strip()]
+
+    for b in blocks:
+        lines = b.split("\n")
+        definition = lines[0].strip()
+
+        example = None
+        for line in lines:
+            if line.lower().startswith("example:") or line.lower().startswith("ejemplo:"):
+                example = line.split(":", 1)[1].strip()
+
+        senses.append({
+            "definition": definition,
+            "example": example,
+        })
+
+    return senses
+
+
+# -------------------------
+# Ollama lookup
+# -------------------------
+
+def ollama_lookup(word, lang):
+    if lang == "es":
+        prompt = f"""
+Define the Spanish word: {word}
+
+Return up to 5 senses.
+
+Format:
+1. <definición>
+   ejemplo: <oración>
+
+2. <definición>
+   ejemplo: <oración>
+
+Rules:
+- Spanish only
+- concise
+"""
+    else:
+        prompt = f"""
+Define the English word: {word}
+
+Return up to 5 senses.
+
+Format:
+1. <definition>
+   example: <sentence>
+
+2. <definition>
+   example: <sentence>
+
+Rules:
+- concise
+"""
+
+    r = requests.post(
+        "http://localhost:11434/api/generate",
+        json={
+            "model": "qwen2.5:7b",
+            "prompt": prompt,
+            "stream": False,
+        },
+        timeout=60,
     )
 
-    r.raise_for_status()
-
-    data = r.json()
-
-    definitions = data.get("definitions", [])
-    if not definitions:
-        return None
-
-    senses_out = []
-    seen_definitions = set()
-
-    for definition in definitions:
-        pos = definition.get("pos")
-
-        for sense in definition.get("senses", []):
-            glosses = sense.get("glosses", [])
-            if not glosses:
-                continue
-
-            gloss = glosses[0].strip()
-
-            # Deduplicate identical definitions
-            if gloss.lower() in seen_definitions:
-                continue
-
-            seen_definitions.add(gloss.lower())
-
-            example = None
-
-            examples = sense.get("examples", [])
-            if examples:
-                first_example = examples[0]
-
-                if isinstance(first_example, dict):
-                    example = first_example.get("text")
-                else:
-                    example = str(first_example)
-
-            senses_out.append({
-                "pos": pos,
-                "definition": gloss,
-                "example": example,
-            })
-
-    if not senses_out:
-        return None
-
-    return senses_out
-
-def _extract_example(sense):
-    examples = sense.get("examples", [])
-    if not examples:
-        return None
-
-    first = examples[0]
-
-    # API returns objects like {"text": "..."}
-    if isinstance(first, dict):
-        return first.get("text")
-
-    return str(first)
+    senses = parse_senses(r.json()["response"])
+    return senses if senses else None
 
 
 # -------------------------
@@ -216,11 +223,12 @@ def build_html(data):
 
     parts += [
         "<br><br>",
-        "<small>Source: WiktAPI</small>",
+        "<small>Source: Qwen2.5 (Ollama)</small>",
         "</div>",
     ]
 
     return "".join(parts)
+
 
 # -------------------------
 # Processing
@@ -238,7 +246,7 @@ def process_deck(deck, tag, lang, dry_run):
         note_id = note["noteId"]
 
         try:
-            word = note["fields"]["Front"]["value"].strip().lower()
+            word = unicodedata.normalize("NFD", note["fields"]["Front"]["value"].strip().lower())
             back = note["fields"]["Back"]["value"]
 
             if not word:
@@ -246,7 +254,7 @@ def process_deck(deck, tag, lang, dry_run):
 
             print(f"Processing: {word}")
 
-            senses = lookup_word(word, lang)
+            senses = ollama_lookup(word, lang)
 
             if not senses:
                 print("  No definition found")
