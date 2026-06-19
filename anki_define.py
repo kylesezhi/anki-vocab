@@ -178,7 +178,7 @@ NO_DEFINITION
             "stream": False,
             "temperature": 0.0
         },
-        timeout=10 * 60
+        timeout=60 * 60
     )
     end = time.time()
     elapsed = end - start
