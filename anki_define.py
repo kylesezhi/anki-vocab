@@ -315,7 +315,7 @@ def run(deck, lang, field_name="Back"):
     for note in notes:
         fields = note["fields"]
 
-        if "auto-defined" in note.get("tags", []):
+        if any("auto-defined" in tag for tag in note.get("tags", [])):
             continue
 
         word = fields.get("Front", {}).get("value", "").strip()
