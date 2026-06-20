@@ -237,7 +237,6 @@ def build_payload(word, fetched, lang):
             text = extract_text(f["html"])
             payload.append(f"SOURCE: {f['url']}\n{text}\n")
     
-    # FIXME
     with open (f"./output/{lang}/{word}.original.txt", "w") as f:
         f.write("".join(payload))
 
@@ -255,6 +254,9 @@ def process_word(word, lang):
 
     payload = build_payload(word, fetched, lang)
     llm_output = ollama_batch(payload)
+
+    with open (f"./output/{lang}/{word}.llm.txt", "w") as f:
+        f.write("".join(payload))
 
     senses = parse_senses(llm_output)
 

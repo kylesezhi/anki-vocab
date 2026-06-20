@@ -1,3 +1,0 @@
-- Save files in output/<language code>/
-  - Save original definition as files named <word>.original.txt
-  - Save LLM output as files named <word>.llm.txt
