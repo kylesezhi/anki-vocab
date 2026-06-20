@@ -229,7 +229,7 @@ def get_sources(word, lang):
 # -----------------------------
 # Build LLM payload
 # -----------------------------
-def build_payload(word, fetched):
+def build_payload(word, fetched, lang):
     payload = [f"\nWORD: {word}\n"]
 
     for f in fetched:
@@ -238,7 +238,7 @@ def build_payload(word, fetched):
             payload.append(f"SOURCE: {f['url']}\n{text}\n")
     
     # FIXME
-    with open (f"{word}.txt", "w") as f:
+    with open (f"./output/{lang}/{word}.original.txt", "w") as f:
         f.write("".join(payload))
 
     return "\n".join(payload)
@@ -253,9 +253,8 @@ def process_word(word, lang):
     urls = get_sources(word, lang)
     fetched = fetch_all(urls)
 
-    payload = build_payload(word, fetched)
+    payload = build_payload(word, fetched, lang)
     llm_output = ollama_batch(payload)
-    print(f"LLM Output: {llm_output}")
 
     senses = parse_senses(llm_output)
 
