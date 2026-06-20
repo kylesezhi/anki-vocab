@@ -79,17 +79,25 @@ def anki_get_notes(note_ids):
 
 
 def anki_update_note(note):
+    # Flatten field values: AnkiConnect expects plain strings, not {value, order} objects
+    fields = {
+        k: (v["value"] if isinstance(v, dict) else v)
+        for k, v in note["fields"].items()
+    }
     payload = {
         "action": "updateNoteFields",
         "version": 6,
         "params": {
             "note": {
                 "id": note["noteId"],
-                "fields": note["fields"]
+                "fields": fields
             }
         }
     }
-    requests.post(ANKI_CONNECT, json=payload)
+    r = requests.post(ANKI_CONNECT, json=payload)
+    result = r.json()
+    if result.get("error"):
+        print(f"  [ERROR] AnkiConnect: {result['error']}")
 
 
 def anki_add_tag(note_id, tag):
@@ -155,6 +163,7 @@ Rules:
 - Do NOT invent meanings
 - Return up to 5 senses
 - Exclude < and > in your responses - they mark where you enter information
+- If there is no suitable example, exclude the "example: " line
 - Keep format EXACT:
 
 1. <definition>
