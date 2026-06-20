@@ -5,9 +5,10 @@ import concurrent.futures as futures
 from bs4 import BeautifulSoup
 import time
 import re
+import humanize, datetime
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "qwen2.5:7b"
+OLLAMA_MODEL = "qwen3.5:9b"
 
 ANKI_CONNECT = "http://localhost:8765"
 
@@ -150,9 +151,9 @@ You will receive dictionary excerpts from multiple sources for a single word.
 
 Rules:
 - Use ONLY provided text
-- Prefer SpanishDict / RAE > Wiktionary > WordReference
 - Do NOT invent meanings
 - Return up to 5 senses
+- Exclude < and > in your responses - they mark where you enter information
 - Keep format EXACT:
 
 1. <definition>
@@ -176,13 +177,14 @@ NO_DEFINITION
             "model": OLLAMA_MODEL,
             "prompt": prompt,
             "stream": False,
-            "temperature": 0.0
+            "temperature": 0.2,
+            "thinking": False
         },
-        timeout=60 * 60
+        timeout=60 * 60,
     )
     end = time.time()
-    elapsed = end - start
-    print(f"{OLLAMA_MODEL} took {elapsed} seconds")
+    elapsed = humanize.naturaldelta(datetime.timedelta(seconds=end - start))
+    print(f"{OLLAMA_MODEL} took {elapsed}")
 
     return r.json()["response"]
 
@@ -235,6 +237,7 @@ def build_payload(word, fetched):
             text = extract_text(f["html"])
             payload.append(f"SOURCE: {f['url']}\n{text}\n")
     
+    # FIXME
     with open (f"{word}.txt", "w") as f:
         f.write("".join(payload))
 
