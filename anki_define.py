@@ -178,7 +178,7 @@ NO_DEFINITION
             "prompt": prompt,
             "stream": False,
             "temperature": 0.2,
-            "thinking": False
+            "think": False
         },
         timeout=60 * 60,
     )
