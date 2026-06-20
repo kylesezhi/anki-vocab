@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 import time
 import re
 import humanize, datetime
+import os
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "qwen3.5:9b"
@@ -249,14 +250,27 @@ def build_payload(word, fetched, lang):
 def process_word(word, lang):
     print(f"\nProcessing: {word}")
 
-    urls = get_sources(word, lang)
-    fetched = fetch_all(urls)
+    # Check cache for fetched (original) data
+    original_cache = f"./output/{lang}/{word}.original.txt"
+    if os.path.exists(original_cache):
+        print(f"  [cached] reading {original_cache}")
+        with open(original_cache) as f:
+            payload = f.read()
+    else:
+        urls = get_sources(word, lang)
+        fetched = fetch_all(urls)
+        payload = build_payload(word, fetched, lang)
 
-    payload = build_payload(word, fetched, lang)
-    llm_output = ollama_batch(payload)
-
-    with open (f"./output/{lang}/{word}.llm.txt", "w") as f:
-        f.write("".join(payload))
+    # Check cache for LLM output
+    llm_cache = f"./output/{lang}/{word}.llm.txt"
+    if os.path.exists(llm_cache):
+        print(f"  [cached] reading {llm_cache}")
+        with open(llm_cache) as f:
+            llm_output = f.read()
+    else:
+        llm_output = ollama_batch(payload)
+        with open(llm_cache, "w") as f:
+            f.write(llm_output)
 
     senses = parse_senses(llm_output)
 
