@@ -123,7 +123,7 @@ def select_sense(word, lang):
     llm_cache = f"./output/{lang}/{word}.llm.txt"
 
     if not os.path.exists(llm_cache):
-        print(f"  [skipped] {llm_cache} not found — run anki_define.py first")
+        print(f"  [skipped] {llm_cache} not found — run define_words.py first")
         return None
 
     with open(llm_cache) as f:

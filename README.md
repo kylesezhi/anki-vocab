@@ -6,7 +6,7 @@ Augment Anki vocabulary cards with LLM-curated definitions from multiple online 
 
 ```mermaid
 flowchart LR
-  A[Anki deck] -->|anki_define.py| B[Dictionary sources<br/>Wiktionary / WordReference /<br/>SpanishDict / RAE]
+  A[Anki deck] -->|define_words.py| B[Dictionary sources<br/>Wiktionary / WordReference /<br/>SpanishDict / RAE]
   B -->|scrape + extract text| C[Ollama<br/>qwen3.5:9b]
   C -->|normalized definitions| D[./output/*.llm.txt]
   D -->|update_anki.py<br/>interactive sense pick| E[Anki notes<br/>Back field appended]
@@ -17,12 +17,12 @@ flowchart LR
 
 Two scripts, run in order:
 
-### 1. `anki_define.py` — Generate definitions
+### 1. `define_words.py` — Generate definitions
 
 Scrapes 2–4 dictionary sources per word, feeds them to a local Ollama model to extract clean definitions, and caches results on disk.
 
 ```
-python anki_define.py
+python define_words.py
 ```
 
 - Targets decks: `English Vocabulary`, `Spanish Vocabulary`
