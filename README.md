@@ -2,6 +2,17 @@
 
 Augment Anki vocabulary cards with LLM-curated definitions from multiple online dictionaries.
 
+## Data flow
+
+```mermaid
+flowchart LR
+  A[Anki deck] -->|anki_define.py| B[Dictionary sources<br/>Wiktionary / WordReference /<br/>SpanishDict / RAE]
+  B -->|scrape + extract text| C[Ollama<br/>qwen3.5:9b]
+  C -->|normalized definitions| D[./output/*.llm.txt]
+  D -->|update_anki.py<br/>interactive sense pick| E[Anki notes<br/>Back field appended]
+  E -.->|tagged auto-defined| A
+```
+
 ## Workflow
 
 Two scripts, run in order:
