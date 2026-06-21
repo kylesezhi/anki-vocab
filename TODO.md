@@ -1,0 +1,1 @@
+- Add a note in the prompt that examples should be in the language of the word.

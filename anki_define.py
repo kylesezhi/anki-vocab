@@ -7,6 +7,7 @@ import time
 import re
 import humanize, datetime
 import os
+import sys
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "qwen3.5:9b"
@@ -15,14 +16,8 @@ ANKI_CONNECT = "http://localhost:8765"
 
 
 # -----------------------------
-# Anki Connect
+# Anki Connect — find notes only
 # -----------------------------
-import requests
-import sys
-
-ANKI_CONNECT = "http://localhost:8765"
-
-
 def check_anki_connection():
     try:
         r = requests.post(
@@ -76,37 +71,6 @@ def anki_get_notes(note_ids):
     }
     r = requests.post(ANKI_CONNECT, json=payload)
     return r.json()["result"]
-
-
-def anki_update_note(note):
-    # Flatten field values: AnkiConnect expects plain strings, not {value, order} objects
-    fields = {
-        k: (v["value"] if isinstance(v, dict) else v)
-        for k, v in note["fields"].items()
-    }
-    payload = {
-        "action": "updateNoteFields",
-        "version": 6,
-        "params": {
-            "note": {
-                "id": note["noteId"],
-                "fields": fields
-            }
-        }
-    }
-    r = requests.post(ANKI_CONNECT, json=payload)
-    result = r.json()
-    if result.get("error"):
-        print(f"  [ERROR] AnkiConnect: {result['error']}")
-
-
-def anki_add_tag(note_id, tag):
-    payload = {
-        "action": "addTags",
-        "version": 6,
-        "params": {"notes": [note_id], "tags": tag}
-    }
-    requests.post(ANKI_CONNECT, json=payload)
 
 
 # -----------------------------
@@ -200,25 +164,6 @@ NO_DEFINITION
 
 
 # -----------------------------
-# Sense parsing
-# -----------------------------
-def parse_senses(block):
-    if "NO_DEFINITION" in block:
-        return []
-
-    senses = []
-    lines = block.splitlines()
-
-    for line in lines:
-        if re.match(r"^\d+\.", line.strip()):
-            senses.append({"definition": line.split(".", 1)[1].strip(), "example": ""})
-        elif "example:" in line.lower() and senses:
-            senses[-1]["example"] = line.split(":", 1)[1].strip()
-
-    return senses
-
-
-# -----------------------------
 # Source routing
 # -----------------------------
 def get_sources(word, lang):
@@ -246,15 +191,16 @@ def build_payload(word, fetched, lang):
         if f.get("status") == 200:
             text = extract_text(f["html"])
             payload.append(f"SOURCE: {f['url']}\n{text}\n")
-    
-    with open (f"./output/{lang}/{word}.original.txt", "w") as f:
+
+    os.makedirs(f"./output/{lang}", exist_ok=True)
+    with open(f"./output/{lang}/{word}.original.txt", "w") as f:
         f.write("".join(payload))
 
     return "\n".join(payload)
 
 
 # -----------------------------
-# Main pipeline
+# Generate LLM definitions and write files
 # -----------------------------
 def process_word(word, lang):
     print(f"\nProcessing: {word}")
@@ -278,35 +224,17 @@ def process_word(word, lang):
             llm_output = f.read()
     else:
         llm_output = ollama_batch(payload)
+        os.makedirs(f"./output/{lang}", exist_ok=True)
         with open(llm_cache, "w") as f:
             f.write(llm_output)
 
-    senses = parse_senses(llm_output)
-
-    if not senses:
-        print("  No definition found")
-        return None
-
-    print("\nSenses:")
-    for i, s in enumerate(senses):
-        print(f"{i+1}. {s['definition']}")
-        if s["example"]:
-            print(f"   e.g. {s['example']}")
-
-    choice = input("\nSelect sense (number, or 0 to skip): ")
-
-    if choice == "0":
-        return None
-
-    selected = senses[int(choice) - 1]
-
-    return selected
+    print(f"  Done — LLM output written to {llm_cache}")
 
 
 # -----------------------------
 # Run over Anki deck
 # -----------------------------
-def run(deck, lang, field_name="Back"):
+def run(deck, lang):
     note_ids = anki_find_notes(deck)
     notes = anki_get_notes(note_ids)
 
@@ -322,24 +250,7 @@ def run(deck, lang, field_name="Back"):
         if not word:
             continue
 
-        result = process_word(word, lang)
-
-        if not result:
-            continue
-
-        existing = fields[field_name]["value"]
-
-        new_text = existing + f"<hr><b>{word}</b><br>{result['definition']}"
-
-        if result["example"]:
-            new_text += f"<br><i>{result['example']}</i>"
-
-        fields[field_name]["value"] = new_text
-
-        anki_update_note(note)
-        anki_add_tag(note["noteId"], "auto-defined-" + lang)
-
-        print("  Updated ✔")
+        process_word(word, lang)
 
 
 if __name__ == "__main__":
