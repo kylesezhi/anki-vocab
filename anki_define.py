@@ -128,6 +128,7 @@ Rules:
 - Return up to 5 senses
 - Exclude < and > in your responses - they mark where you enter information
 - If there is no suitable example, exclude the "example: " line
+- Examples MUST be in the same language as the word itself
 - Keep format EXACT:
 
 1. <definition>
