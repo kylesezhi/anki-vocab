@@ -141,13 +141,44 @@ def select_sense(word, lang):
         if s["example"]:
             print(f"     e.g. {s['example']}")
 
-    choice = input("\nSelect sense (number, or 0 to skip): ")
+    while True:
+        choice = input("\nSelect sense(s) (e.g. 1,3, or 0 to skip, or q to quit): ").strip()
 
-    if choice == "0":
-        return None
+        if choice.lower() in ("q", "quit"):
+            print("Quitting.")
+            sys.exit(0)
 
-    selected = senses[int(choice) - 1]
-    return selected
+        if choice == "0":
+            return None
+
+        # Parse comma-delimited numbers
+        parts = [p.strip() for p in choice.split(",") if p.strip()]
+        indices = []
+        valid = True
+        for p in parts:
+            if not p.isdigit():
+                valid = False
+                break
+            idx = int(p)
+            if idx < 1 or idx > len(senses):
+                valid = False
+                break
+            indices.append(idx)
+
+        if not valid or not indices:
+            print(f"  Invalid input. Enter numbers between 1 and {len(senses)}, comma-separated (e.g. 1,3).")
+            continue
+
+        # Deduplicate while preserving order
+        seen = set()
+        unique_indices = []
+        for idx in indices:
+            if idx not in seen:
+                seen.add(idx)
+                unique_indices.append(idx)
+
+        selected = [senses[i - 1] for i in unique_indices]
+        return selected
 
 
 # -----------------------------
@@ -169,19 +200,22 @@ def run(deck, lang, field_name="Back"):
         if not word:
             continue
 
-        result = select_sense(word, lang)
+        results = select_sense(word, lang)
 
-        if not result:
+        if not results:
             continue
 
         existing = fields[field_name]["value"]
 
-        new_text = existing + f"<hr><b>{word}</b><br>{result['definition']}"
+        for result in results:
+            new_text = existing + f"<hr><b>{word}</b><br>{result['definition']}"
 
-        if result["example"]:
-            new_text += f"<br><i>{result['example']}</i>"
+            if result["example"]:
+                new_text += f"<br><i>{result['example']}</i>"
 
-        fields[field_name]["value"] = new_text
+            existing = new_text
+
+        fields[field_name]["value"] = existing
 
         anki_update_note(note)
         anki_add_tag(note["noteId"], "auto-defined-" + lang)
