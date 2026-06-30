@@ -9,8 +9,14 @@ import humanize, datetime
 import os
 import sys
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "qwen3.5:9b"
+from dotenv import load_dotenv
+
+load_dotenv()
+
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODEL = "openai/gpt-oss-120b:free"
+OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
+API_DELAY_SECONDS = 5
 
 ANKI_CONNECT = "http://localhost:8765"
 
@@ -25,6 +31,10 @@ def check_anki_connection():
             json={"action": "version", "version": 6},
             timeout=3
         )
+
+        print(r.status_code)
+        print(r.text)
+        print(r.headers)
 
         r.raise_for_status()
         data = r.json()
@@ -60,6 +70,9 @@ def anki_find_notes(deck):
         "params": {"query": f'deck:"{deck}"'}
     }
     r = requests.post(ANKI_CONNECT, json=payload)
+    print(r.status_code)
+    print(r.text)
+    print(r.headers)
     return r.json()["result"]
 
 
@@ -70,6 +83,9 @@ def anki_get_notes(note_ids):
         "params": {"notes": note_ids}
     }
     r = requests.post(ANKI_CONNECT, json=payload)
+    print(r.status_code)
+    print(r.text)
+    print(r.headers)
     return r.json()["result"]
 
 
@@ -114,11 +130,10 @@ def extract_text(html):
 
 
 # -----------------------------
-# Ollama normalization
+# OpenRouter normalization
 # -----------------------------
 def ollama_batch(word_payload):
-    prompt = """
-You are a dictionary normalization engine.
+    system_prompt = """You are a dictionary normalization engine.
 
 You will receive dictionary excerpts from multiple sources for a single word.
 
@@ -143,25 +158,32 @@ NO_DEFINITION
 -------------------------
 """
 
-    prompt += word_payload
-
     start = time.time()
     r = requests.post(
-        OLLAMA_URL,
+        OPENROUTER_URL,
+        headers={
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+        },
         json={
-            "model": OLLAMA_MODEL,
-            "prompt": prompt,
-            "stream": False,
+            "model": OPENROUTER_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": word_payload},
+            ],
             "temperature": 0.2,
-            "think": False
         },
         timeout=60 * 60,
     )
     end = time.time()
     elapsed = humanize.naturaldelta(datetime.timedelta(seconds=end - start))
-    print(f"{OLLAMA_MODEL} took {elapsed}")
+    print(f"{OPENROUTER_MODEL} took {elapsed}")
+    print(r.status_code)
+    print(r.text)
+    print(r.headers)
 
-    return r.json()["response"]
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
 
 
 # -----------------------------
@@ -224,6 +246,7 @@ def process_word(word, lang):
         with open(llm_cache) as f:
             llm_output = f.read()
     else:
+        time.sleep(API_DELAY_SECONDS)
         llm_output = ollama_batch(payload)
         os.makedirs(f"./output/{lang}", exist_ok=True)
         with open(llm_cache, "w") as f:
